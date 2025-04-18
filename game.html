@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmo's Crossing Challenge</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Core theme CSS (includes Bootstrap)-->
+    <link rel="stylesheet" href="styles.css">
+
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #211b558a; /* Light gray background */
+            font-family: 'Press Start 2P', cursive; /* Pixelated font */
+            overflow: hidden; /* Prevent scrollbars */
+            margin: 0;
+            padding: 0;
+            flex-direction: column; /* Stack canvas and controls */
+        }
+        h1{
+            font-size: 10.5px; /* Larger title */
+            text-decoration: underline; /* Underline title */
+            color: #0448ad; /* BYU Navy */
+            margin-bottom: 20px; /* Space below title */
+        }
+        #gameContainer {
+            position: relative; /* Needed for absolute positioning of gameOverScreen */
+            width: 80vw; /* Responsive width */
+            max-width: 600px; /* Max width */
+            height: 80vh; /* Responsive height */
+            max-height: 800px; /* Max height */
+            border: 5px solid #333; /* Dark border */
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2); /* Add shadow */
+            background-color: #fff; /* White background for canvas container */
+            overflow: hidden; /* Keep contents within border */
+        }
+        canvas {
+            display: block; /* Remove extra space below canvas */
+            width: 100%;
+            height: 100%;
+            background-color: #e0e0e0; /* Light gray canvas background */
+            image-rendering: pixelated; /* Keep graphics sharp */
+            image-rendering: crisp-edges;
+        }
+        #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85); /* Slightly darker overlay */
+            color: white;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 1.5rem; /* Adjusted font size */
+            padding: 20px;
+            box-sizing: border-box; /* Include padding in dimensions */
+            /* Add subtle animation */
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        #gameOverScreen.visible { /* Class to control visibility and animation */
+             display: flex;
+             opacity: 1;
+        }
+        #gameOverScreen h2 {
+            margin-bottom: 20px;
+            font-size: 2rem; /* Larger game over title */
+            color: #ffcc00; /* BYU Gold */
+        }
+        #gameOverScreen p {
+            margin-bottom: 30px;
+            font-size: 1.2rem; /* Message font size */
+        }
+         #gameOverScreen button {
+            padding: 15px 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            background-color: #002255; /* BYU Navy */
+            color: white;
+            border: 3px solid #ffcc00; /* BYU Gold border */
+            border-radius: 10px; /* Rounded corners */
+            font-family: 'Press Start 2P', cursive;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.3);
+        }
+        #gameOverScreen button:hover {
+            background-color: #003366; /* Darker Navy on hover */
+        }
+        #gameOverScreen button:active {
+             transform: scale(0.95); /* Click effect */
+        }
+        #controlsInfo {
+            margin-top: 20px;
+            font-size: 0.8rem;
+            color: #555;
+        }
+        a:hover{
+    color: #50c2fb !important; 
+        }
+    </style>
+</head>
+
+<body>
+    <div class="common nav">
+        <a href="../index.html">Blog Page</a> &nbsp | &nbsp;
+        <a href="scratch/index.html">Scratch Page</a>
+    </div>
+    <br>
+    <!-- game code -->
+     <h1>Cosmo Crossings</h1>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="gameOverScreen">
+            <h2>Game Over!</h2>
+            <p id="gameOverReason"></p>
+            <p>You have let down all of Cougar Nation.</p>
+            <p id="finalScore"></p>
+            <button id="restartButton">Try Again</button>
+        </div>
+    </div>
+    <div id="controlsInfo">Use Arrow Keys to Move</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const restartButton = document.getElementById('restartButton');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const gameOverReasonDisplay = document.getElementById('gameOverReason');
+        const gameContainer = document.getElementById('gameContainer');
+
+        // --- Game Configuration ---
+        const TILE_SIZE = 40;
+        let gameSpeed = 2;
+        const BASE_SPEED_INCREASE_INTERVAL = 20;
+        const MAX_GAME_SPEED = 8;
+        let AUTO_SCROLL_FRAME_INTERVAL = 100;
+        const MIN_AUTO_SCROLL_INTERVAL = 45;
+
+        // --- Game State ---
+        let player;
+        let lanes = [];
+        let currentLaneIndex = 0;
+        let score = 0;
+        let highestLaneReached = 0;
+        let gameRunning = true;
+        let forwardMovesSinceSpeedIncrease = 0;
+        let animationFrameId;
+        let frameCount = 0;
+        let autoScrollCounter = 0;
+        let hasPlayerMoved = false;
+
+        // --- Environment Types ---
+        const LANE_TYPES = { WILDERNESS: 'wilderness', ROAD: 'road', CAMPUS: 'campus', SAFE: 'safe' };
+
+        // --- Colors ---
+        const COLORS = {
+            playerBody: '#002E5D', playerAccent: '#FFFFFF', wilderness: '#228B22', road: '#696969',
+            campus: '#D2B48C', safe: '#90EE90', tree: '#8B4513',
+            car: ['#FF0000', '#0000FF', '#FFFF00', '#A0A0A0', '#00A0A0'],
+            carWindow: '#ADD8E6', carWheel: '#333333',
+            student: ['#4682B4', '#B0C4DE', '#778899', '#5F9EA0', '#FFB6C1'],
+            studentHead: '#FFDBAC', studentLegs: '#444444'
+        };
+
+        // --- Player Class ---
+        class Player {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.width = TILE_SIZE; this.height = TILE_SIZE;
+            }
+
+            // *** UPDATED DRAW METHOD ***
+            draw() {
+                const canvasX = this.x * TILE_SIZE;
+                const canvasY = canvas.height - (this.y - currentLaneIndex + 1) * TILE_SIZE;
+                // Keep scale relatively small to fit details in the tile
+                const scale = TILE_SIZE * 0.018; // Slightly larger scale for new details
+                const offsetX = canvasX + TILE_SIZE / 2;
+                const offsetY = canvasY + TILE_SIZE / 2;
+
+                ctx.save();
+                ctx.translate(offsetX, offsetY);
+                ctx.scale(scale, scale);
+                ctx.lineWidth = 0.5 / scale; // Keep line width thin relative to scale
+
+                // Body/Head Shape (Navy Blue) - More rounded top, defined ears, snout hint
+                ctx.fillStyle = COLORS.playerBody;
+                ctx.beginPath();
+                ctx.moveTo(0, -14); // Top center head
+                ctx.lineTo(4, -15); // Top right head slope
+                ctx.lineTo(8, -12); // Right ear tip
+                ctx.lineTo(10, -8); // Right ear base
+                ctx.lineTo(9, 0);   // Right cheek top
+                ctx.lineTo(11, 5);  // Right cheek bottom / snout side
+                ctx.lineTo(8, 10);  // Right jaw
+                ctx.lineTo(3, 14);  // Chin right
+                ctx.lineTo(-3, 14); // Chin left
+                ctx.lineTo(-8, 10); // Left jaw
+                ctx.lineTo(-11, 5); // Left cheek bottom / snout side
+                ctx.lineTo(-9, 0);  // Left cheek top
+                ctx.lineTo(-10, -8); // Left ear base
+                ctx.lineTo(-8, -12); // Left ear tip
+                ctx.lineTo(-4, -15); // Top left head slope
+                ctx.closePath();
+                ctx.fill();
+
+                // Eyes (White Circles)
+                ctx.fillStyle = COLORS.playerAccent;
+                ctx.beginPath();
+                ctx.arc(-3.5, -3, 1.5, 0, Math.PI * 2); // Left eye
+                ctx.arc(3.5, -3, 1.5, 0, Math.PI * 2);  // Right eye
+                ctx.fill();
+
+                // Nose (White Triangle)
+                ctx.beginPath();
+                ctx.moveTo(0, 1); // Top point
+                ctx.lineTo(2, 3.5); // Bottom right
+                ctx.lineTo(-2, 3.5); // Bottom left
+                ctx.closePath();
+                ctx.fill();
+
+                // Whiskers (White Lines)
+                ctx.strokeStyle = COLORS.playerAccent; // Use white for whiskers
+                ctx.lineWidth = 0.8 / scale; // Make whiskers slightly thicker than potential outline
+                // Left Whiskers
+                ctx.beginPath();
+                ctx.moveTo(-6, 3); ctx.lineTo(-10, 2);
+                ctx.moveTo(-6, 5); ctx.lineTo(-11, 5);
+                ctx.moveTo(-6, 7); ctx.lineTo(-10, 8);
+                // Right Whiskers
+                ctx.moveTo(6, 3); ctx.lineTo(10, 2);
+                ctx.moveTo(6, 5); ctx.lineTo(11, 5);
+                ctx.moveTo(6, 7); ctx.lineTo(10, 8);
+                ctx.stroke();
+
+
+                ctx.restore();
+            }
+            // *** END UPDATED DRAW METHOD ***
+
+
+            move(dx, dy) { /* ... (no change) ... */
+                if (!gameRunning) return;
+                const targetX = this.x + dx;
+                const targetY = this.y + dy;
+                const maxGridX = Math.floor(canvas.width / TILE_SIZE);
+                if (targetX < 0 || targetX >= maxGridX || targetY < currentLaneIndex) { return; }
+                this.x = targetX; this.y = targetY;
+                if (this.y > highestLaneReached) {
+                    score += 10; highestLaneReached = this.y;
+                    forwardMovesSinceSpeedIncrease++;
+                    if (forwardMovesSinceSpeedIncrease >= BASE_SPEED_INCREASE_INTERVAL && gameSpeed < MAX_GAME_SPEED) {
+                        gameSpeed = Math.min(MAX_GAME_SPEED, gameSpeed + 0.5);
+                        AUTO_SCROLL_FRAME_INTERVAL = Math.max(MIN_AUTO_SCROLL_INTERVAL, AUTO_SCROLL_FRAME_INTERVAL - 5);
+                        forwardMovesSinceSpeedIncrease = 0;
+                    }
+                }
+                const scrollThreshold = Math.floor((canvas.height / TILE_SIZE) * 0.6);
+                if (this.y - currentLaneIndex >= scrollThreshold) {
+                    currentLaneIndex++; generateLaneIfNeeded(); autoScrollCounter = 0;
+                }
+            }
+        }
+
+        // --- Obstacle Class ---
+        class Obstacle {
+             constructor(laneIndex, type, direction) { /* ... (no change) ... */
+                this.laneIndex = laneIndex; this.type = type; this.direction = direction;
+                if (type === 'car') {
+                    this.width = TILE_SIZE * 1.6; this.height = TILE_SIZE * 0.8;
+                    this.speed = (Math.random() * 0.4 + 0.8) * gameSpeed * this.direction;
+                    this.color = COLORS.car[Math.floor(Math.random() * COLORS.car.length)];
+                } else if (type === 'student') {
+                    this.width = TILE_SIZE * 0.6; this.height = TILE_SIZE * 0.9;
+                    this.baseSpeed = (Math.random() * 0.5 + 0.3) * gameSpeed * this.direction;
+                    this.speed = this.baseSpeed;
+                    this.color = COLORS.student[Math.floor(Math.random() * COLORS.student.length)];
+                    this.isPaused = false; this.pauseTimer = Math.random() * 200 + 100; this.pauseDuration = Math.random() * 60 + 30;
+                }
+                this.x = (this.direction === 1) ? -this.width - TILE_SIZE : canvas.width + TILE_SIZE;
+            }
+            update() { /* ... (no change) ... */
+                 if (this.type === 'car') { this.speed = (Math.random() * 0.4 + 0.8) * gameSpeed * this.direction; }
+                 else if (this.type === 'student') { this.baseSpeed = (Math.random() * 0.5 + 0.3) * gameSpeed * this.direction; if (!this.isPaused) this.speed = this.baseSpeed; }
+                 if (this.type === 'student') { this.pauseTimer--; if (this.isPaused) { this.pauseDuration--; if (this.pauseDuration <= 0) { this.isPaused = false; this.speed = this.baseSpeed; this.pauseTimer = Math.random() * 200 + 100; } } else if (this.pauseTimer <= 0) { if (Math.random() < 0.2) { this.isPaused = true; this.speed = 0; this.pauseDuration = Math.random() * 60 + 30; } else { this.pauseTimer = Math.random() * 50 + 50; } } }
+                 this.x += this.speed;
+                const resetMargin = TILE_SIZE * 3;
+                if (this.direction === 1 && this.x > canvas.width + resetMargin) { this.x = -this.width - TILE_SIZE * (Math.random() * 2 + 1); if(this.type === 'student') this.resetPauseState(); }
+                else if (this.direction === -1 && this.x < -this.width - resetMargin) { this.x = canvas.width + resetMargin + TILE_SIZE * (Math.random() * 2 + 1); if(this.type === 'student') this.resetPauseState(); }
+            }
+            resetPauseState() { /* ... (no change) ... */
+                 this.isPaused = false; this.speed = this.baseSpeed; this.pauseTimer = Math.random() * 200 + 100;
+            }
+            draw() { /* ... (no change) ... */
+                const yPos = canvas.height - (this.laneIndex - currentLaneIndex + 1) * TILE_SIZE;
+                const topEdge = yPos; const bottomEdge = topEdge + TILE_SIZE;
+                if (bottomEdge > 0 && topEdge < canvas.height) { if (this.type === 'car') this.drawCar(yPos); else if (this.type === 'student') this.drawStudent(yPos); }
+            }
+            drawCar(laneYPos) { /* ... (no change) ... */
+                const bodyHeight = this.height * 0.6; const bodyY = laneYPos + (TILE_SIZE - bodyHeight); const cabinHeight = this.height * 0.5; const cabinWidth = this.width * 0.6; const cabinY = bodyY - cabinHeight * 0.8; const cabinX = this.x + (this.width - cabinWidth) / 2; const wheelRadius = this.height * 0.15; const wheelY = bodyY + bodyHeight - wheelRadius * 0.8; ctx.fillStyle = COLORS.carWheel; ctx.beginPath(); ctx.arc(this.x + this.width * 0.2, wheelY, wheelRadius, 0, Math.PI * 2); ctx.arc(this.x + this.width * 0.8, wheelY, wheelRadius, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = this.color; ctx.fillRect(this.x, bodyY, this.width, bodyHeight); ctx.fillStyle = COLORS.carWindow; ctx.fillRect(cabinX, cabinY, cabinWidth, cabinHeight); ctx.strokeStyle = this.color; ctx.lineWidth = 2; ctx.strokeRect(cabinX, cabinY, cabinWidth, cabinHeight);
+            }
+            drawStudent(laneYPos) { /* ... (no change) ... */
+                const headRadius = this.width * 0.4; const headY = laneYPos + TILE_SIZE * 0.25; const bodyWidth = this.width * 0.8; const bodyHeight = this.height * 0.4; const bodyX = this.x + (this.width - bodyWidth) / 2; const bodyY = headY + headRadius * 0.8; const legHeight = this.height * 0.3; const legWidth = bodyWidth * 0.3; const legY = bodyY + bodyHeight; const leg1X = bodyX + bodyWidth * 0.1; const leg2X = bodyX + bodyWidth * 0.6; ctx.fillStyle = COLORS.studentHead; ctx.beginPath(); ctx.arc(this.x + this.width / 2, headY, headRadius, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = this.color; ctx.fillRect(bodyX, bodyY, bodyWidth, bodyHeight); ctx.fillStyle = COLORS.studentLegs; ctx.fillRect(leg1X, legY, legWidth, legHeight); ctx.fillRect(leg2X, legY, legWidth, legHeight);
+            }
+            checkCollision(player) { /* ... (no change) ... */
+                if (player.y !== this.laneIndex) return false;
+                const playerX = player.x * TILE_SIZE; const playerRight = playerX + player.width;
+                const obstacleRight = this.x + this.width;
+                return playerX < obstacleRight && playerRight > this.x;
+            }
+        }
+
+        // --- Lane Class ---
+        class Lane {
+             constructor(index, type) { /* ... (no change) ... */
+                this.index = index; this.type = type; this.obstacles = [];
+                this.color = COLORS[type];
+                this.direction = (type === LANE_TYPES.ROAD || type === LANE_TYPES.CAMPUS) ? ((Math.random() < 0.5) ? 1 : -1) : 0;
+                this.generateObstacles();
+            }
+            generateObstacles() { /* ... (no change) ... */
+                const gridWidth = Math.floor(canvas.width / TILE_SIZE);
+                if (this.type === LANE_TYPES.WILDERNESS) { const numberOfTrees = Math.floor(Math.random() * (gridWidth / 3)) + 1; let placedPositions = new Set(); for (let i = 0; i < numberOfTrees; i++) { let treeGridX, attempts = 0; do { treeGridX = Math.floor(Math.random() * gridWidth); attempts++; } while (placedPositions.has(treeGridX) && attempts < gridWidth); if (!placedPositions.has(treeGridX)) { placedPositions.add(treeGridX); const treeX = treeGridX * TILE_SIZE + (TILE_SIZE * 0.1); const treeWidth = TILE_SIZE * 0.8; const treeHeight = TILE_SIZE * 0.8; this.obstacles.push({ type: 'tree', x: treeX, yIndex: this.index, width: treeWidth, height: treeHeight, color: COLORS.tree, isStatic: true, draw: () => { const yPos = canvas.height - (this.yIndex - currentLaneIndex + 1) * TILE_SIZE; const treeTopY = yPos + (TILE_SIZE - this.height) / 2; const topEdge = yPos; const bottomEdge = topEdge + TILE_SIZE; if (bottomEdge > 0 && topEdge < canvas.height) { const trunkWidth = this.width * 0.3; const trunkHeight = this.height * 0.5; const trunkX = this.x + (this.width - trunkWidth) / 2; const trunkY = treeTopY + this.height * 0.5; const leavesRadius = this.width * 0.5; const leavesX = this.x + this.width / 2; const leavesY = treeTopY + leavesRadius * 0.8; ctx.fillStyle = this.color; ctx.fillRect(trunkX, trunkY, trunkWidth, trunkHeight); ctx.fillStyle = COLORS.wilderness; ctx.beginPath(); ctx.arc(leavesX, leavesY, leavesRadius, 0, Math.PI * 2); ctx.fill(); } }, checkCollision: (player) => { if (player.y !== this.yIndex) return false; const playerX = player.x * TILE_SIZE; const playerRight = playerX + player.width; const obstacleRight = this.x + this.width; return playerX < obstacleRight && playerRight > this.x; } }); } } }
+                else if (this.type === LANE_TYPES.ROAD) { const numberOfCars = Math.floor(Math.random() * 2) + 1; let minSeparation = canvas.width / (numberOfCars + 0.5); for (let i = 0; i < numberOfCars; i++) { const car = new Obstacle(this.index, 'car', this.direction); car.x = (this.direction === 1) ? -car.width - (i * minSeparation + Math.random() * 80) : canvas.width + (i * minSeparation + Math.random() * 80); this.obstacles.push(car); } }
+                else if (this.type === LANE_TYPES.CAMPUS) { const numberOfStudents = Math.floor(Math.random() * 3) + 1; let minSeparation = canvas.width / (numberOfStudents + 0.5); for (let i = 0; i < numberOfStudents; i++) { const student = new Obstacle(this.index, 'student', this.direction); student.x = (this.direction === 1) ? -student.width - (i * minSeparation + Math.random() * 100) : canvas.width + (i * minSeparation + Math.random() * 100); this.obstacles.push(student); } }
+            }
+            update() { /* ... (no change) ... */ this.obstacles.forEach(obstacle => { if (!obstacle.isStatic) obstacle.update(); }); }
+            draw() { /* ... (no change) ... */ const yPos = canvas.height - (this.index - currentLaneIndex + 1) * TILE_SIZE; const topEdge = yPos; const bottomEdge = yPos + TILE_SIZE; if (bottomEdge > 0 && topEdge < canvas.height) { ctx.fillStyle = this.color; ctx.fillRect(0, yPos, canvas.width, TILE_SIZE); } this.obstacles.forEach(obstacle => obstacle.draw()); }
+            checkCollisions(player) { /* ... (no change) ... */ if (player.y !== this.index) return false; for (const obstacle of this.obstacles) { if (obstacle.checkCollision(player)) return true; } return false; }
+        }
+
+        // --- Game Functions ---
+        function initGame() { /* ... (no change) ... */ gameRunning = true; score = 0; currentLaneIndex = 0; highestLaneReached = 0; lanes = []; gameSpeed = 2; forwardMovesSinceSpeedIncrease = 0; frameCount = 0; autoScrollCounter = 0; hasPlayerMoved = false; AUTO_SCROLL_FRAME_INTERVAL = 100; gameOverScreen.classList.remove('visible'); resizeCanvas(); const startGridX = Math.floor((canvas.width / TILE_SIZE) / 2); player = new Player(startGridX, 0); lanes.push(new Lane(0, LANE_TYPES.SAFE)); lanes.push(new Lane(1, LANE_TYPES.SAFE)); const numInitialLanes = Math.ceil(canvas.height / TILE_SIZE) + 15; for (let i = 2; i < numInitialLanes; i++) generateLaneIfNeeded(); player.x = Math.min(player.x, Math.floor(canvas.width / TILE_SIZE) - 1); if (animationFrameId) cancelAnimationFrame(animationFrameId); gameLoop(); }
+        function generateLaneIfNeeded() { /* ... (no change) ... */ const nextLaneIndex = lanes.length; const numVisibleLanes = Math.ceil(canvas.height / TILE_SIZE); const topVisibleLaneIndex = currentLaneIndex + numVisibleLanes; if (nextLaneIndex < topVisibleLaneIndex + 20) { let laneType; const randomType = Math.random(); const prevLaneType = lanes.length > 0 ? lanes[lanes.length - 1].type : LANE_TYPES.SAFE; if (randomType < 0.15 && prevLaneType !== LANE_TYPES.SAFE) laneType = LANE_TYPES.SAFE; else if (randomType < 0.4 && prevLaneType !== LANE_TYPES.WILDERNESS) laneType = LANE_TYPES.WILDERNESS; else if (randomType < 0.7 && prevLaneType !== LANE_TYPES.ROAD) laneType = LANE_TYPES.ROAD; else if (prevLaneType !== LANE_TYPES.CAMPUS) laneType = LANE_TYPES.CAMPUS; else { const availableTypes = [LANE_TYPES.WILDERNESS, LANE_TYPES.ROAD, LANE_TYPES.CAMPUS, LANE_TYPES.SAFE].filter(t => t !== prevLaneType); laneType = availableTypes.length > 0 ? availableTypes[Math.floor(Math.random() * availableTypes.length)] : LANE_TYPES.SAFE; } lanes.push(new Lane(nextLaneIndex, laneType)); } }
+        function handleInput(e) { /* ... (no change) ... */ if (!gameRunning) return; if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); if (!hasPlayerMoved) { hasPlayerMoved = true; console.log("First move detected, auto-scroll enabled."); } } switch (e.key) { case 'ArrowUp': player.move(0, 1); break; case 'ArrowDown': player.move(0, -1); break; case 'ArrowLeft': player.move(-1, 0); break; case 'ArrowRight': player.move(1, 0); break; } }
+        function updateGame() { /* ... (no change) ... */ if (!gameRunning) return; frameCount++; if (hasPlayerMoved) { autoScrollCounter++; if (autoScrollCounter >= AUTO_SCROLL_FRAME_INTERVAL) { currentLaneIndex++; generateLaneIfNeeded(); autoScrollCounter = 0; } } if (player.y < currentLaneIndex) { gameOver("Caught by the edge!"); return; } const updateBuffer = 5; const minUpdateIndex = Math.max(0, currentLaneIndex - updateBuffer); const maxUpdateIndex = currentLaneIndex + Math.ceil(canvas.height / TILE_SIZE) + updateBuffer; lanes.forEach(lane => { if (lane.index >= minUpdateIndex && lane.index <= maxUpdateIndex) lane.update(); }); const playerLane = lanes.find(lane => lane.index === player.y); if (playerLane && playerLane.checkCollisions(player)) { let obstacleType = "something"; for (const obs of playerLane.obstacles) { if (obs.checkCollision(player)) { obstacleType = obs.type; break; } } gameOver(`Hit a ${obstacleType}!`); return; } }
+        function drawGame() { /* ... (no change) ... */ ctx.clearRect(0, 0, canvas.width, canvas.height); const drawBuffer = 2; const minDrawIndex = Math.max(0, currentLaneIndex - drawBuffer); const maxDrawIndex = currentLaneIndex + Math.ceil(canvas.height / TILE_SIZE) + drawBuffer; lanes.forEach(lane => { if (lane.index >= minDrawIndex && lane.index <= maxDrawIndex) lane.draw(); }); player.draw(); ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(5, 5, 200, 70); ctx.fillStyle = 'white'; ctx.font = '16px "Press Start 2P"'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(`Score: ${score}`, 15, 15); ctx.fillText(`Speed: ${gameSpeed.toFixed(1)}`, 15, 45); }
+        function gameOver(reason = "Collision!") { /* ... (no change) ... */ if (!gameRunning) return; gameRunning = false; cancelAnimationFrame(animationFrameId); finalScoreDisplay.textContent = `Final Score: ${score}`; gameOverReasonDisplay.textContent = reason; gameOverScreen.classList.add('visible'); console.log(`Game Over! Reason: ${reason}, Final Score: ${score}`); }
+        function gameLoop() { /* ... (no change) ... */ updateGame(); drawGame(); if (gameRunning) animationFrameId = requestAnimationFrame(gameLoop); }
+        function resizeCanvas() { /* ... (no change) ... */ const containerWidth = gameContainer.clientWidth; const containerHeight = gameContainer.clientHeight; const cols = Math.max(5, Math.floor(containerWidth / TILE_SIZE)); const rows = Math.max(8, Math.floor(containerHeight / TILE_SIZE)); canvas.width = cols * TILE_SIZE; canvas.height = rows * TILE_SIZE; const marginTop = Math.max(0, (containerHeight - canvas.height) / 2); canvas.style.marginTop = `${marginTop}px;`; if (gameRunning && player) { if (typeof resizeCanvas.hasBeenCalled === 'undefined') resizeCanvas.hasBeenCalled = true; else { /* Optional: initGame(); */ } } }
+
+        // --- Event Listeners ---
+        window.addEventListener('keydown', handleInput);
+        restartButton.addEventListener('click', initGame);
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- Initial Setup ---
+        initGame();
+
+    </script>
+</body>
+</html>

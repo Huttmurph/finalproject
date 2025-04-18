@@ -1,0 +1,45 @@
+.common {
+    /* border: 2px solid plum; */
+    position: absolute;
+}
+.nav {
+    position: relative;
+    float: right;
+    font-size: 200%;
+    color: rgb(165, 42, 69);
+}
+.link {
+    text-decoration: none;
+    color: rgb(165, 42, 69) !important;
+}
+.footer {
+position: fixed;
+ bottom: 0px;
+left: 0px;
+right: 0px;
+font-size: 100%;
+font-style: italic;
+color: burlywood;
+text-align: center;
+background-color: lightgray;
+}
+.header {
+    top: 0px;
+    left: 0px;
+    right: 0px;
+    text-align: center;
+    font-size: 250%;
+    color: red;
+    z-index: -1;
+
+}
+.content {
+    top: 50px;
+    left: 10%;
+    right: 10%;
+    bottom: 30px;
+    font-size: large;
+background-color: rgb(226, 243, 213);
+z-index: -2;
+
+}
